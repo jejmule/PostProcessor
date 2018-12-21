@@ -9,20 +9,25 @@
   
   FORKID {F1515682-04F5-42E5-975B-BF5FCB39AEDC}
 */
+/**
+  Post processor modified by J.Parent
+  The goal is to control KENO tangential knife machine using eding CNC controller
+  Based on official Autodesk post-processor
+ */
 
-description = "Eding CNC/USBCNC";
+description = "KENO cuutter";
 vendor = "Eding CNC";
 vendorUrl = "http://www.edingcnc.com";
 legal = "Copyright (C) 2012-2017 by Autodesk, Inc.";
 certificationLevel = 2;
 minimumRevision = 40783;
 
-longDescription = "Generic milling post for Eding CNC/USBCNC.";
+longDescription = "Tangential knife on eding CNC";
 
 extension = "cnc";
 setCodePage("ascii");
 
-capabilities = CAPABILITY_MILLING;
+capabilities = CAPABILITY_JET;
 tolerance = spatial(0.002, MM);
 
 minimumChordLength = spatial(0.25, MM);
@@ -30,8 +35,8 @@ minimumCircularRadius = spatial(0.01, MM);
 maximumCircularRadius = spatial(1000, MM);
 minimumCircularSweep = toRad(0.01);
 maximumCircularSweep = toRad(180);
-allowHelicalMoves = true;
-allowedCircularPlanes = undefined; // allow any circular motion
+allowHelicalMoves = false;
+allowedCircularPlanes = 1 << PLANE_XY; // allow any circular motion
 
 
 
@@ -47,7 +52,8 @@ properties = {
   separateWordsWithSpace: true, // specifies that the words should be separated with a white space
   useRadius: false, // specifies that arcs should be output using the radius (R word) instead of the I, J, and K words.
   showNotes: false, // specifies that operation notes should be output.
-  smoothingTolerance: 0 // smoothing tolerance (0 for disabled)
+  smoothingTolerance: 0, // smoothing tolerance (0 for disabled)
+  maxAngleMoving: 5 //maximum angle variation without moving up the tool [deg]
 };
 
 // user-defined property definitions
@@ -62,7 +68,8 @@ propertyDefinitions = {
   separateWordsWithSpace: {title:"Separate words with space", description:"Adds spaces between words if 'yes' is selected.", type:"boolean"},
   useRadius: {title:"Radius arcs", description:"If yes is selected, arcs are outputted using radius values rather than IJK.", type:"boolean"},
   showNotes: {title:"Show notes", description:"Writes operation notes as comments in the outputted code.", type:"boolean"},
-  smoothingTolerance: {title:"Smoothing tolerance", description:"Smoothing tolerance (-1 for disabled).", type:"number"}
+  smoothingTolerance: {title:"Smoothing tolerance", description:"Smoothing tolerance (-1 for disabled).", type:"number"},
+  maxAngleMoving: {title:"Maximum Angle Moving", description:"Maximum angle variation while the tool is cutting in [deg]", type:"number"}
 };
 
 // samples:
@@ -80,7 +87,7 @@ var coolants = {
   off: 9
 };
 
-var numberOfToolSlots = 9999;
+var numberOfToolSlots = 3;
 
 var gFormat = createFormat({prefix:"G", decimals:0});
 var mFormat = createFormat({prefix:"M", decimals:0});
@@ -158,10 +165,10 @@ function onOpen() {
     maximumCircularSweep = toRad(90); // avoid potential center calculation errors for CNC
   }
 
-  if (false) { // note: setup your machine here
-    var aAxis = createAxis({coordinate:0, table:true, axis:[1, 0, 0], range:[-0.0001, 90.0001], preference:0});
+  if (true) { // note: setup your machine here
+    //var aAxis = createAxis({coordinate:0, table:true, axis:[1, 0, 0], range:[-0.0001, 90.0001], preference:0});
     var cAxis = createAxis({coordinate:2, table:true, axis:[0, 0, 1], range:[-360, 360], preference:0, cyclic:true});
-    machineConfiguration = new MachineConfiguration(aAxis, cAxis);
+    machineConfiguration = new MachineConfiguration(cAxis);
 
     setMachineConfiguration(machineConfiguration);
     optimizeMachineAngles2(1); // TCP mode
@@ -255,14 +262,18 @@ function onOpen() {
   }
 
   // absolute coordinates and feed per min
+  writeComment("absolute coordinates and feed per min")
   writeBlock(gAbsIncModal.format(90), gFeedModeModal.format(94));
+  writeComment("XY plane")
   writeBlock(gPlaneModal.format(17));
 
   switch (unit) {
   case IN:
+    writeComment("unit in inch")
     writeBlock(gUnitModal.format(20));
     break;
   case MM:
+    writeComment("unit in mm")
     writeBlock(gUnitModal.format(21));
     break;
   }
@@ -314,7 +325,7 @@ function setWorkPlane(abc) {
   onCommand(COMMAND_UNLOCK_MULTI_AXIS);
 
   if (!retracted) {
-    writeRetract(Z);
+    //writeRetract(Z);
   }
 
   writeBlock(
@@ -388,6 +399,16 @@ function isProbeOperation() {
   return hasParameter("operation-strategy") && (getParameter("operation-strategy") == "probe");
 }
 
+function startVacuumTable() {
+  writeComment("Start vacuum table")
+  writeBlock(mFormat.format(54)+" P1")
+}
+
+function stopVacuumTable() {
+  writeComment("Stop vacuum table")
+  writeBlock(mFormat.format(55)+" P1")
+}
+
 function onSection() {
   var insertToolCall = isFirstSection() ||
     currentSection.getForceToolChange && currentSection.getForceToolChange() ||
@@ -403,7 +424,7 @@ function onSection() {
     (!machineConfiguration.isMultiAxisConfiguration() && currentSection.isMultiAxis()) ||
     (!getPreviousSection().isMultiAxis() && currentSection.isMultiAxis() ||
       getPreviousSection().isMultiAxis() && !currentSection.isMultiAxis()); // force newWorkPlane between indexing and simultaneous operations
-  if (insertToolCall || newWorkOffset || newWorkPlane) {
+  /* if (insertToolCall || newWorkOffset || newWorkPlane) {
     
     // stop spindle before retract during tool change
     if (insertToolCall && !isFirstSection()) {
@@ -414,8 +435,8 @@ function onSection() {
     }
     // retract to safe plane
     writeRetract(Z);
-  }
-
+  } */
+  startVacuumTable()
   writeln("");
   
   if (hasParameter("operation-comment")) {
@@ -443,7 +464,7 @@ function onSection() {
   if (insertToolCall) {
     forceWorkPlane();
     
-    onCommand(COMMAND_COOLANT_OFF);
+    //onCommand(COMMAND_COOLANT_OFF);
   
     if (!isFirstSection() && properties.optionalStop) {
       onCommand(COMMAND_OPTIONAL_STOP);
@@ -453,7 +474,9 @@ function onSection() {
       warning(localize("Tool number exceeds maximum value."));
     }
 
-    writeBlock("T" + toolFormat.format(tool.number), mFormat.format(6));
+    //writeBlock("T" + toolFormat.format(tool.number), mFormat.format(6));
+    writeComment("Select tool "+tool.number);
+    writeBlock(mFormat.format(90+tool.number));
     if (tool.comment) {
       writeComment(tool.comment);
     }
@@ -488,7 +511,7 @@ function onSection() {
       }
     }
   }
-  
+  /*
   if (insertToolCall ||
       isFirstSection() ||
       (rpmFormat.areDifferent(spindleSpeed, sOutput.getCurrent())) ||
@@ -502,7 +525,7 @@ function onSection() {
     writeBlock(
       sOutput.format(spindleSpeed), mFormat.format(tool.clockwise ? 3 : 4)
     );
-  }
+  }*/
 
   // wcs
   if (insertToolCall) { // force work offset when changing tool
@@ -551,7 +574,7 @@ function onSection() {
       );
     } else {
       abc = getWorkPlaneMachineABC(currentSection.workPlane);
-      setWorkPlane(abc);
+      //setWorkPlane(abc);
     }
   } else { // pure 3D
     var remaining = currentSection.workPlane;
@@ -563,7 +586,7 @@ function onSection() {
   }
 
   // set coolant after we have positioned at Z
-  setCoolant(tool.coolant);
+  //setCoolant(tool.coolant);
 
   forceAny();
 
@@ -589,7 +612,7 @@ function onSection() {
         gAbsIncModal.format(90),
         gMotionModal.format(0), xOutput.format(initialPosition.x), yOutput.format(initialPosition.y)
       );
-      writeBlock(gMotionModal.format(0), gFormat.format(43), zOutput.format(initialPosition.z));
+      //writeBlock(gMotionModal.format(0), gFormat.format(43), zOutput.format(initialPosition.z));
     } else {
       writeBlock(
         gAbsIncModal.format(90),
@@ -824,7 +847,7 @@ function onRapid(_x, _y, _z) {
       error(localize("Radius compensation mode cannot be changed at rapid traversal."));
       return;
     }
-    writeBlock(gMotionModal.format(0), x, y, z);
+    writeBlock(gMotionModal.format(0), x, y);
     feedOutput.reset();
   }
 }
@@ -840,6 +863,12 @@ function onLinear(_x, _y, _z, feed) {
   var y = yOutput.format(_y);
   var z = zOutput.format(_z);
   var f = feedOutput.format(feed);
+  var targetDir = new Vector(_x-getCurrentPosition().x,_y-getCurrentPosition().y,0);
+  var xDir = new Vector(1,0,0);
+  var c = Vector.getAngle(targetDir,xDir);
+  writeComment("Turn knife");
+  writeBlock(gMotionModal.format(0), cOutput.format(c));
+
   if (x || y || z) {
     if (pendingRadiusCompensation >= 0) {
       pendingRadiusCompensation = -1;
@@ -1137,6 +1166,10 @@ function onCommand(command) {
   case COMMAND_BREAK_CONTROL:
     return;
   case COMMAND_TOOL_MEASURE:
+    return;
+  case COMMAND_POWER_ON:
+    return;
+  case COMMAND_POWER_OFF:
     return;
   }
 
