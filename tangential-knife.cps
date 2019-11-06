@@ -67,6 +67,23 @@ var sequenceNumber = 0;
 //specific section for tangential knife
 var c_rad = 0;  // Current C axis position
 var liftAtCorner_rad = toRad(5);       // dont'lift the knife is angle shift is less than liftAtCorner
+
+/**
+ Update C position for tangenmtial knife
+ */
+
+ function updateC(target_rad) {
+   return 0;
+ }
+
+ function moveUp() {
+   return 0;
+ }
+
+ function moveDown() {
+   return 0;
+ }
+
 /**
   Writes the specified block.
 */
