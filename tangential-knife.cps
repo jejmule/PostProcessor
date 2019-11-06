@@ -66,22 +66,38 @@ var sequenceNumber = 0;
 
 //specific section for tangential knife
 var c_rad = 0;  // Current C axis position
-var liftAtCorner_rad = toRad(5);       // dont'lift the knife is angle shift is less than liftAtCorner
+var liftAtCorner_rad = toRad(1.8);       // dont'lift the knife is angle shift is less than liftAtCorner
 
 /**
  Update C position for tangenmtial knife
  */
 
  function updateC(target_rad) {
-   return 0;
+  //check if we should rotate the head
+  var delta_rad = Math.abs(target_rad-c_rad)
+  if (Math.abs(delta_rad) > liftAtCorner_rad) {
+    moveUp()
+    writeBlock(gMotionModal.format(0), cOutput.format(target_rad));
+    moveDown()
+  }
+  else {
+    writeBlock(gMotionModal.format(1), cOutput.format(target_rad));
+  }
+  c_rad = target_rad
+  return;
  }
 
  function moveUp() {
-   return 0;
+   writeComment('lift up');
+   writeComment(tool.number);
+   //M55 P1-9 clear aux 1-9
+   mFormat.format(55)
+   return;
  }
 
  function moveDown() {
-   return 0;
+  writeComment('lift down');
+  return;
  }
 
 /**
@@ -153,18 +169,7 @@ function onLinear(_x, _y, _z, feed) {
   var start = getCurrentPosition();
   //compute orientation of the upcoming segment
   var c_target_rad = Math.atan((_y-start.y)/(_x-start.x));
-  //check if we should rotate the head
-  var delta_rad = Math.abs(c_rad-c_target_rad)
-  writeComment(toDeg(delta_rad))
-  if (delta_rad > liftAtCorner_rad) {
-    writeComment('lift up');
-    writeBlock(gMotionModal.format(0), cOutput.format(c_target_rad));
-    writeComment('lift down');
-  }
-  else {
-    writeBlock(gMotionModal.format(1), cOutput.format(c_target_rad));
-  }
-  c_rad = c_target_rad
+  updateC(c_target_rad);
   var x = xOutput.format(_x);
   var y = yOutput.format(_y);; 
   if (x || y) {
