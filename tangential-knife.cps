@@ -190,6 +190,12 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
   // one of X/Y and I/J are required and likewise
 
   var start = getCurrentPosition();
+  var C = new Vector(cx,cy,cz)
+  var PC = Vector.diff(start,C)
+  var up = new Vector(0,0,1)
+  var dir = Vector.cross(PC,up)
+  writeComment(dir.toString())
+  writeComment('hello')
   switch (getCircularPlane()) {
   case PLANE_XY:
     writeBlock(gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), iOutput.format(cx - start.x, 0), jOutput.format(cy - start.y, 0), feedOutput.format(feed));
