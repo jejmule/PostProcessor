@@ -29,7 +29,8 @@ maximumCircularRadius = spatial(1000, MM);
 minimumCircularSweep = toRad(0.01);
 maximumCircularSweep = toRad(180);
 allowHelicalMoves = true;
-allowedCircularPlanes = PLANE_XY;
+//allowedCircularPlanes = PLANE_XY;
+allowedCircularPlanes = undefined;
 
 // user-defined properties
 properties = {
@@ -66,7 +67,7 @@ var sequenceNumber = 0;
 
 //specific section for tangential knife
 var c_rad = 0;  // Current C axis position
-var liftAtCorner_rad = toRad(1.8);       // dont'lift the knife is angle shift is less than liftAtCorner
+var liftAtCorner_rad = toRad(5);       // dont'lift the knife is angle shift is less than liftAtCorner
 
 /**
  Update C position for tangenmtial knife
