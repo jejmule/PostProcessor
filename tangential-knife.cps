@@ -68,18 +68,21 @@ var sequenceNumber = 0;
 //specific section for tangential knife
 var c_rad = 0;  // Current C axis position
 var liftAtCorner_rad = toRad(5);       // dont'lift the knife is angle shift is less than liftAtCorner
+var up = false;   //is the knife up?
 
 /**
  Update C position for tangenmtial knife
  */
-
  function updateC(target_rad) {
   //check if we should rotate the head
-  var delta_rad = Math.abs(target_rad-c_rad)
+  var delta_rad = (target_rad-c_rad) % (2*Math.PI)
   if (Math.abs(delta_rad) > liftAtCorner_rad) {
     moveUp()
+    gMotionModal.reset()
     writeBlock(gMotionModal.format(0), cOutput.format(target_rad));
     moveDown()
+  }
+  else if (delta_rad == 0){
   }
   else {
     writeBlock(gMotionModal.format(1), cOutput.format(target_rad));
@@ -90,7 +93,7 @@ var liftAtCorner_rad = toRad(5);       // dont'lift the knife is angle shift is 
 
  function moveUp() {
    writeComment('lift up');
-   writeComment(tool.number);
+   writeComment(String.concat('tool ',tool.number));
    //M55 P1-9 clear aux 1-9
    mFormat.format(55)
    return;
@@ -153,24 +156,65 @@ function onSection() {
   if (tool.coolant != COOLANT_OFF) {
     warningOnce(localize("Coolant not supported."), WARNING_COOLANT);
   }
-  
+  //select the right spindle
+  //on my machine there are 4 pindle, selected by M90-91-92-93-94 G code
+  var command;
+  switch(tool.number) {
+    case(1):
+      command = 91;
+      break;
+    case(2):
+      command = 92;
+      break;
+    case(3):
+      command = 95;
+      break;1
+    case (4):
+      command = 97;
+      break;
+    default :
+      command = 90;
+      break
+  }
+  writeComment('Select spindle #'+tool.number)
+  writeBlock(mFormat.format(command))
   feedOutput.reset();
+}
+
+function onPower(power) {
+  if(power) {
+    writeBlock(mFormat.format(2)); //M2 switch on spindle, in this case move knife down
+  }
+  else {
+    writeBlock(mFormat.format(5)); //M5 siwtch off spindle, move up
+  }
 }
 
 function onRapid(_x, _y, _z) {
   var x = xOutput.format(_x);
   var y = yOutput.format(_y);
+
   if (x || y) {
     writeBlock(gMotionModal.format(0), x, y);
     feedOutput.reset();
   }
+
+  var start = getCurrentPosition();
+  var delta = start.z-_z;
+  if ( delta <0) { //Head is down
+    moveUp();
+  
+  }
+  //ther is no need to move down the head this is manaaged by updateC when we know the direction
 }
 
 function onLinear(_x, _y, _z, feed) {
   var start = getCurrentPosition();
+  var target = new Vector(_x,_y,_z);
+  var direction = Vector.diff(target,start);
   //compute orientation of the upcoming segment
-  var c_target_rad = Math.atan((_y-start.y)/(_x-start.x));
-  updateC(c_target_rad);
+  var orientation_rad = direction.getXYAngle();
+  updateC(orientation_rad);
   var x = xOutput.format(_x);
   var y = yOutput.format(_y);; 
   if (x || y) {
@@ -190,16 +234,22 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
 
   // one of X/Y and I/J are required and likewise
 
-  var start = getCurrentPosition();
-  var C = new Vector(cx,cy,cz)
-  var PC = Vector.diff(start,C)
-  var up = new Vector(0,0,1)
-  var dir = Vector.cross(PC,up)
-  writeComment(dir.toString())
-  writeComment('hello')
+
   switch (getCircularPlane()) {
   case PLANE_XY:
-    writeBlock(gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), iOutput.format(cx - start.x, 0), jOutput.format(cy - start.y, 0), feedOutput.format(feed));
+    var start = getCurrentPosition();
+    var center = new Vector(cx,cy,cz);
+    var start_center = Vector.diff(start,center);
+    var up = new Vector(0,0,1);
+    var start_dir = Vector.cross(start_center,up);
+    var start_angle = start_dir.getXYAngle();
+    var end = new Vector(x,y,z);
+    var end_center = Vector.diff(end,center);
+    var end_dir = Vector.cross(end_center,up);
+    var end_angle = end_dir.getXYAngle();
+    updateC(start_angle);
+    c_rad = end_angle;
+    writeBlock(gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), cOutput.format(end_angle), iOutput.format(cx - start.x, 0), jOutput.format(cy - start.y, 0), feedOutput.format(feed));
     break;
   default:
     var t = tolerance;
@@ -209,13 +259,18 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
     linearize(t);
   }
 }
+/*
+function onSectionEnd() {
+  //move the head up
+  moveUp();
+}*/
 
 function onCommand(command) {
 }
 
 function onClose() {
-  writeComment('spindle 0 : laser spot')
-  writeBlock(mOutput.format(90)); //Set back spindle 0 (laser spot)
+  writeComment('select spindle 0');
+  writeBlock(mOutput.format(90)); //Set back spindle 0
   writeComment('go to corner')
-  writeBlock(gMotionModal.format(30)) //Move to parking position 2 (corner)
+  writeBlock(gMotionModal.format(30)) //Move to parking position 2
 }
