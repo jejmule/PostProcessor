@@ -10,13 +10,13 @@
   FORKID {F2FA3EAF-E822-4778-A478-1370D795992E}
 */
 
-description = "Generic 2D";
-vendor = "Autodesk";
-vendorUrl = "http://www.autodesk.com";
+description = "Tangential knife";
+vendor = "Jejmule";
+vendorUrl = "jejmule@gmail.com";
 legal = "Copyright (C) 2012-2013 by Autodesk, Inc.";
 certificationLevel = 2;
 
-longDescription = "Generic ISO milling post for 2D.";
+longDescription = "Tangemtial knife support based on the Autodesk generic ISO milling post for 2D.";
 
 extension = "nc";
 setCodePage("ascii");
@@ -28,18 +28,27 @@ minimumCircularRadius = spatial(0.01, MM);
 maximumCircularRadius = spatial(1000, MM);
 minimumCircularSweep = toRad(0.01);
 maximumCircularSweep = toRad(180);
-allowHelicalMoves = true;
-//allowedCircularPlanes = PLANE_XY;
-allowedCircularPlanes = undefined;
+allowHelicalMoves = false;
+allowedCircularPlanes = 1 << PLANE_XY;
 
 // user-defined properties
 properties = {
-  useFeed: true // enable to use F output
+  useFeed: true, // enable to use F output
+  hasZAxis: false, //is the machine has a Z motorized axis
+  liftAtCorener: 3, //if the angle between two move is larger than 5° the knife is lift up, rotate
+  hasVacuum: true, //turn on/off the vacuum pump
+  vacuumOn: 'M54 P1', //Gcode to swicth on the vacuum pump
+  vacuumOff: 'M55 P1' //Gcode to swicth off the vacuum pump
 };
 
 // user-defined property definitions
 propertyDefinitions = {
-  useFeed: {title:"Use feed", description:"Enable to use F output.", type:"boolean"}
+  useFeed: {title:"Use feed", description:"Enable to use F output.", type:"boolean"},
+  hasZAxis: {title:"Z axis", description:"Is the machine equipped with a Z motorized axis.", type:"boolean"},
+  liftAtCorener:{title:"Lift at corner", description:"maximum angle at wich the knife is turned in the material, if the angle is larger the knife is lifted and rotated", type:"integer"},
+  hasVacuum: {title:"Vacuum table", description:"Is the machine equipped with a vacuum table", type:"boolean"},
+  vacuumOn: {title:"Vacuum on code", description:"code to swicth on the vaccum",type:"String"},
+  vacuumOff: {title:"Vacuum off code", description:"code to swicth off the vaccum",type:"String"}
 };
 
 var WARNING_WORK_OFFSET = 0;
@@ -47,6 +56,7 @@ var WARNING_COOLANT = 1;
 
 var gFormat = createFormat({prefix:"G", decimals:0, width:2, zeropad:true});
 var mFormat = createFormat({prefix:"M", decimals:0});
+var pFormat = createFormat({prefix:"P", decimals:1});
 
 var xyzFormat = createFormat({decimals:(unit == MM ? 3 : 4)});
 var abcFormat = createFormat({decimals:3, forceDecimal:true, scale:DEG});
@@ -54,6 +64,9 @@ var feedFormat = createFormat({decimals:(unit == MM ? 2 : 3)});
 
 var xOutput = createVariable({prefix:"X"}, xyzFormat);
 var yOutput = createVariable({prefix:"Y"}, xyzFormat);
+if(properties.hasZAxis) {
+  var zOutput = createVariable({prefix:"Z"}, xyzFormat);
+}
 var cOutput = createVariable({prefix:"C"}, abcFormat);
 var iOutput = createReferenceVariable({prefix:"I"}, xyzFormat);
 var jOutput = createReferenceVariable({prefix:"J"}, xyzFormat);
@@ -61,14 +74,12 @@ var feedOutput = createVariable({prefix:"F"}, feedFormat);
 
 var gMotionModal = createModal({}, gFormat); // modal group 1 // G0-G3, ...
 var gAbsIncModal = createModal({}, gFormat); // modal group 3 // G90-91
-var mOutput = createModal({},mFormat); // modal group for M codes
 
 var sequenceNumber = 0;
 
 //specific section for tangential knife
 var c_rad = 0;  // Current C axis position
-var liftAtCorner_rad = toRad(5);       // dont'lift the knife is angle shift is less than liftAtCorner
-var up = false;   //is the knife up?
+var liftAtCorner_rad = toRad(properties.liftAtCorener);
 
 /**
  Update C position for tangenmtial knife
@@ -76,15 +87,15 @@ var up = false;   //is the knife up?
  function updateC(target_rad) {
   //check if we should rotate the head
   var delta_rad = (target_rad-c_rad) % (2*Math.PI)
-  if (Math.abs(delta_rad) > liftAtCorner_rad) {
+  if (Math.abs(delta_rad) > liftAtCorner_rad) { //angle between segments is larger than max_angle : lift the knife, rotate and plunge back in material
     moveUp()
     gMotionModal.reset()
     writeBlock(gMotionModal.format(0), cOutput.format(target_rad));
     moveDown()
   }
-  else if (delta_rad == 0){
+  else if (delta_rad == 0){ //next segment is colinear with current segment : do nothing
   }
-  else {
+  else {  //angle between segments is smaller than max_angle : rotate knife in material
     writeBlock(gMotionModal.format(1), cOutput.format(target_rad));
   }
   c_rad = target_rad
@@ -92,16 +103,24 @@ var up = false;   //is the knife up?
  }
 
  function moveUp() {
-   writeComment('lift up');
-   writeComment(String.concat('tool ',tool.number));
-   //M55 P1-9 clear aux 1-9
-   mFormat.format(55)
-   return;
+   start = getCurrentPosition();
+   param = "operation:clearanceHeight_value"
+   if(properties.hasZAxis && hasParameter(param)){
+     onRapid(start.x,start.y,getParameter(param))
+   }
+   else {
+     onPower(false); //use on power to lift the knife
+   }
  }
 
  function moveDown() {
-  writeComment('lift down');
-  return;
+  start = getCurrentPosition();
+   if(properties.hasZAxis){
+    onRapid(start.x,start.y,start.z)
+   }
+   else {
+     onPower(true); //use on power to plunge with the knife
+   }
  }
 
 /**
@@ -119,6 +138,11 @@ function writeComment(text) {
   writeln("(" + text + ")");
 }
 
+/**
+function writeCommentOnLine(text){
+  write("(" + text + ")");
+}*/
+
 function onOpen() {
   if (!properties.useFeed) {
     feedOutput.disable();
@@ -133,9 +157,15 @@ function onOpen() {
 
   writeBlock(gAbsIncModal.format(90));
 
+  if (properties.hasVacuum){
+    writeComment('Switch on vacuum table');
+    writeBlock(properties.vacuumOn);
+  }
+
+  /** 
   var cAxis = createAxis({coordinate:Z, table:false, axis:[0, 0, 1], cyclic:true}); 
   machineConfiguration = new MachineConfiguration(cAxis);
-  setMachineConfiguration(machineConfiguration);
+  setMachineConfiguration(machineConfiguration);*/
 }
 
 function onComment(message) {
@@ -157,7 +187,7 @@ function onSection() {
     warningOnce(localize("Coolant not supported."), WARNING_COOLANT);
   }
   //select the right spindle
-  //on my machine there are 4 pindle, selected by M90-91-92-93-94 G code
+  //on my machine there are 4 spindles, selected by M90-91-92-93-94 G code
   var command;
   switch(tool.number) {
     case(1):
@@ -182,30 +212,41 @@ function onSection() {
 }
 
 function onPower(power) {
-  if(power) {
-    writeBlock(mFormat.format(2)); //M2 switch on spindle, in this case move knife down
-  }
-  else {
-    writeBlock(mFormat.format(5)); //M5 siwtch off spindle, move up
+  if(!properties.hasZAxis) {
+    if(power) {
+      writeComment('plunge knife and wait')
+      writeBlock(mFormat.format(2)); //M2 switch on spindle, in this case move knife down
+      writeBlock(gFormat.format(4),pFormat.format(0.2)); //wait 200ms the time for the knife to plunge
+
+    }
+    else {
+      writeComment('lift knife and wait')
+      writeBlock(mFormat.format(5)); //M5 siwtch off spindle, move up
+      writeBlock(gFormat.format(4),pFormat.format(0.2)); //wait 200ms the time for the knife to lift
+
+    }
   }
 }
 
 function onRapid(_x, _y, _z) {
   var x = xOutput.format(_x);
   var y = yOutput.format(_y);
-
-  if (x || y) {
-    writeBlock(gMotionModal.format(0), x, y);
-    feedOutput.reset();
+  //gext next record to avoid moving down and then up the head to rotate in the segment direction
+  //writeComment(toString(getNextRecord()));
+  //move the head in Z if there is a Z axis
+  if(properties.hasZAxis){
+    var z = zOutput.format(_z);
+    if (x || y || z) {
+      writeBlock(gMotionModal.format(0), x, y, z);
+      feedOutput.reset();
+    }
   }
-
-  var start = getCurrentPosition();
-  var delta = start.z-_z;
-  if ( delta <0) { //Head is down
-    moveUp();
-  
+  else {
+    if (x || y) {
+      writeBlock(gMotionModal.format(0), x, y);
+      feedOutput.reset();
+    }
   }
-  //ther is no need to move down the head this is manaaged by updateC when we know the direction
 }
 
 function onLinear(_x, _y, _z, feed) {
@@ -269,8 +310,12 @@ function onCommand(command) {
 }
 
 function onClose() {
+  if (properties.hasVacuum){
+    writeComment('Switch off vacuum table');
+    writeBlock(properties.vacuumOff);
+  }
   writeComment('select spindle 0');
-  writeBlock(mOutput.format(90)); //Set back spindle 0
+  writeBlock(mFormat.format(90)); //Set back spindle 0
   writeComment('go to corner')
   writeBlock(gMotionModal.format(30)) //Move to parking position 2
 }
