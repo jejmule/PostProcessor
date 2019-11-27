@@ -82,6 +82,7 @@ var sequenceNumber = 0;
 //specific section for tangential knife
 var c_rad = 0;  // Current C axis position
 var liftAtCorner_rad = toRad(properties.liftAtCorener);
+var offset = 0
 
 /**
  Update C position for tangenmtial knife
@@ -89,17 +90,17 @@ var liftAtCorner_rad = toRad(properties.liftAtCorener);
  function updateC(target_rad) {
   //check if we should rotate the head
   var delta_rad = (target_rad-c_rad) % (2*Math.PI)
-  //writeComment(toDeg(target_rad))
+  //writeComment(String.concat('delta ',delta_rad))
   if (Math.abs(delta_rad) > liftAtCorner_rad) { //angle between segments is larger than max_angle : lift the knife, rotate and plunge back in material
     moveUp()
     gMotionModal.reset()
-    writeBlock(gMotionModal.format(0), cOutput.format(toDeg(target_rad)));
+    writeBlock(gMotionModal.format(0), cOutput.format(toDeg(target_rad)+offset));
     moveDown()
   }
   else if (delta_rad == 0){ //next segment is colinear with current segment : do nothing
   }
   else {  //angle between segments is smaller than max_angle : rotate knife in material
-    writeBlock(gMotionModal.format(1), cOutput.format(toDeg(target_rad)));
+    writeBlock(gMotionModal.format(1), cOutput.format(toDeg(target_rad)+offset));
   }
   c_rad += delta_rad
  }
@@ -205,6 +206,7 @@ function onSection() {
       break;
     case(2):
       command = 92;
+      offset = properties.tool2Offset;
       break;
     case(3):
       command = 95;
@@ -267,15 +269,6 @@ function onLinear(_x, _y, _z, feed) {
   var direction = Vector.diff(target,start);
   //compute orientation of the upcoming segment
   var orientation_rad = direction.getXYAngle();
-  //add offset on tool 2
-  var offset = 0
-  if(tool.number==2){
-    offset = toRad(properties.tool2Offset);
-  }
-  orientation_rad += offset;
-  //orientation_rad = angleToMachine(orientation_rad)
-  //orientation_rad = orientation_rad % (2*Math.PI);
-  //compute C orientation
   updateC(orientation_rad);
   var x = xOutput.format(_x);
   var y = yOutput.format(_y);; 
@@ -299,6 +292,24 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
 
   switch (getCircularPlane()) {
   case PLANE_XY:
+    var OD = getCurrentPosition();  //►vector from origin to departure
+    var OC = new Vector(cx,cy,cz);  //vector from origin to center 
+    var Z = new Vector(0,0,clockwise ? 1 : -1);  //vector normal to XY plane
+    var CD = Vector.diff(OD,OC); //OD-OC = CO+OD = CD -> radius vector facing ourside
+    var tangent = Vector.cross(CD,Z); //tangent vector to circle in the direction of motion
+    var start_dir = tangent.getXYAngle(); //direction of the motion at starting point
+    updateC(start_dir);
+    var OA = new Vector(x,y,z);  //vector from origin to arrival
+    var CA = Vector.diff(OA,OC); 
+    var angle = Vector.getAngle(CA,CD);
+    if(clockwise){
+      c_rad -= angle
+    }
+    else {
+      c_rad += angle
+    }
+    writeBlock(gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), cOutput.format(toDeg(c_rad)+offset), iOutput.format(cx - start.x, 0), jOutput.format(cy - start.y, 0), feedOutput.format(feed));
+    /*
     var start = getCurrentPosition();
     var center = new Vector(cx,cy,cz);
     var end = new Vector(x,y,z);
@@ -336,11 +347,9 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
         delta = -(delta+Math.PI)%(2*Math.PI);
       }
     }
-    //writeComment(toDeg(c_rad))
     c_rad += delta;
-    //writeComment(toDeg(delta))
-    //writeComment(toDeg(c_rad))
     writeBlock(gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), cOutput.format(toDeg(c_rad)), iOutput.format(cx - start.x, 0), jOutput.format(cy - start.y, 0), feedOutput.format(feed));
+    */
     break;
   default:
     var t = tolerance;
