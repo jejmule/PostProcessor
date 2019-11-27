@@ -61,7 +61,7 @@ var mFormat = createFormat({prefix:"M", decimals:0});
 var pFormat = createFormat({prefix:"P", decimals:1});
 
 var xyzFormat = createFormat({decimals:(unit == MM ? 3 : 4)});
-var abcFormat = createFormat({decimals:3, forceDecimal:true, scale:DEG});
+var abcFormat = createFormat({decimals:3, forceDecimal:true})//, scale:DEG});
 var feedFormat = createFormat({decimals:(unit == MM ? 2 : 3)});
 
 var xOutput = createVariable({prefix:"X"}, xyzFormat);
@@ -89,18 +89,19 @@ var liftAtCorner_rad = toRad(properties.liftAtCorener);
  function updateC(target_rad) {
   //check if we should rotate the head
   var delta_rad = (target_rad-c_rad) % (2*Math.PI)
+  //writeComment(toDeg(target_rad))
   if (Math.abs(delta_rad) > liftAtCorner_rad) { //angle between segments is larger than max_angle : lift the knife, rotate and plunge back in material
     moveUp()
     gMotionModal.reset()
-    writeBlock(gMotionModal.format(0), cOutput.format(target_rad));
+    writeBlock(gMotionModal.format(0), cOutput.format(toDeg(target_rad)));
     moveDown()
   }
   else if (delta_rad == 0){ //next segment is colinear with current segment : do nothing
   }
   else {  //angle between segments is smaller than max_angle : rotate knife in material
-    writeBlock(gMotionModal.format(1), cOutput.format(target_rad));
+    writeBlock(gMotionModal.format(1), cOutput.format(toDeg(target_rad)));
   }
-  c_rad = target_rad
+  c_rad += delta_rad
  }
 
  function moveUp() {
@@ -217,6 +218,8 @@ function onSection() {
   }
   writeComment('Select spindle #'+tool.number)
   writeBlock(mFormat.format(command))
+  c_rad = 0;
+  writeBlock(gFormat.format(0),cOutput.format(toDeg(c_rad)))
   feedOutput.reset();
 }
 
@@ -298,40 +301,46 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
   case PLANE_XY:
     var start = getCurrentPosition();
     var center = new Vector(cx,cy,cz);
-    var start_center = Vector.diff(start,center);
-    var up = new Vector(0,0,1);
-    var start_dir = Vector.cross(start_center,up);
-    var start_angle = start_dir.getXYAngle();
     var end = new Vector(x,y,z);
+    var up = new Vector(0,0,1);
+    var down = new Vector(0,0,-1);
+    var start_center = Vector.diff(start,center);
     var end_center = Vector.diff(end,center);
-    var end_dir = Vector.cross(end_center,up);
+    if(clockwise){
+      var start_dir = Vector.cross(start_center,up);
+      var end_dir = Vector.cross(end_center,up);
+    }
+    else {
+      var start_dir = Vector.cross(start_center,down);
+      var end_dir = Vector.cross(end_center,down);
+    }
+    var start_angle = start_dir.getXYAngle();
     var end_angle = end_dir.getXYAngle();
     //add offset on tool 2
     var offset = 0
-    writeComment(start_angle)
-    writeComment(end_angle)
-    writeComment(c_rad)
     if(tool.number==2){
       offset = toRad(properties.tool2Offset);
     }
     start_angle += offset;
-    //start_angle = angleToMachine(start_angle);
     end_angle += offset;
-    //end_angle = angleToMachine(end_angle);
+    updateC(start_angle);
+
+    var delta = end_angle-start_angle
     if(clockwise) {
-      writeComment('clockwise')
-      if(end_angle -start_angle > c_rad) {
-        end_angle -= 2*Math.PI;
+      if(delta > 0) {
+        delta = -(delta+Math.PI)%(2*Math.PI);
       }
     }
     else {
-      if(end_angle <= c_rad){
-        end_angle += 2*Math.PI;
+      if(delta < 0){
+        delta = -(delta+Math.PI)%(2*Math.PI);
       }
     }
-    updateC(start_angle);
-    c_rad = end_angle;
-    writeBlock(gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), cOutput.format(end_angle), iOutput.format(cx - start.x, 0), jOutput.format(cy - start.y, 0), feedOutput.format(feed));
+    //writeComment(toDeg(c_rad))
+    c_rad += delta;
+    //writeComment(toDeg(delta))
+    //writeComment(toDeg(c_rad))
+    writeBlock(gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), cOutput.format(toDeg(c_rad)), iOutput.format(cx - start.x, 0), jOutput.format(cy - start.y, 0), feedOutput.format(feed));
     break;
   default:
     var t = tolerance;
