@@ -39,7 +39,7 @@ properties = {
   hasVacuum: true, //turn on/off the vacuum pump
   vacuumOn: 'M54 P1', //Gcode to swicth on the vacuum pump
   vacuumOff: 'M55 P1', //Gcode to swicth off the vacuum pump
-  tool2Offset: 0 //offset on second head
+  tool2Offset: -55 //offset on second head
 };
 
 // user-defined property definitions
