@@ -35,10 +35,11 @@ allowedCircularPlanes = 1 << PLANE_XY;
 properties = {
   useFeed: true, // enable to use F output
   hasZAxis: false, //is the machine has a Z motorized axis
-  liftAtCorener: 3, //if the angle between two move is larger than 5° the knife is lift up, rotate
+  liftAtCorener: 5, //if the angle between two move is larger than 5° the knife is lift up, rotate
   hasVacuum: true, //turn on/off the vacuum pump
   vacuumOn: 'M54 P1', //Gcode to swicth on the vacuum pump
-  vacuumOff: 'M55 P1' //Gcode to swicth off the vacuum pump
+  vacuumOff: 'M55 P1', //Gcode to swicth off the vacuum pump
+  tool2Offset: 0 //offset on second head
 };
 
 // user-defined property definitions
@@ -48,7 +49,8 @@ propertyDefinitions = {
   liftAtCorener:{title:"Lift at corner", description:"maximum angle at wich the knife is turned in the material, if the angle is larger the knife is lifted and rotated", type:"integer"},
   hasVacuum: {title:"Vacuum table", description:"Is the machine equipped with a vacuum table", type:"boolean"},
   vacuumOn: {title:"Vacuum on code", description:"code to swicth on the vaccum",type:"String"},
-  vacuumOff: {title:"Vacuum off code", description:"code to swicth off the vaccum",type:"String"}
+  vacuumOff: {title:"Vacuum off code", description:"code to swicth off the vaccum",type:"String"},
+  tool2Offset: {title:"C offset on tool 2", description:"offset in degree on spindle 2",type:"Float"}
 };
 
 var WARNING_WORK_OFFSET = 0;
@@ -99,7 +101,6 @@ var liftAtCorner_rad = toRad(properties.liftAtCorener);
     writeBlock(gMotionModal.format(1), cOutput.format(target_rad));
   }
   c_rad = target_rad
-  return;
  }
 
  function moveUp() {
@@ -172,6 +173,14 @@ function onComment(message) {
   writeComment(message);
 }
 
+function angleToMachine(angle) {
+  var twopi = 2*Math.PI;
+  if (angle<0) {
+    angle = (angle + Math.PI) % twopi - Math.PI;
+  }
+  return angle;
+}
+
 function onSection() {
 
   if (!isSameDirection(currentSection.workPlane.forward, new Vector(0, 0, 1))) {
@@ -215,7 +224,7 @@ function onPower(power) {
   if(!properties.hasZAxis) {
     if(power) {
       writeComment('plunge knife and wait')
-      writeBlock(mFormat.format(2)); //M2 switch on spindle, in this case move knife down
+      writeBlock(mFormat.format(3)); //M3 switch on spindle, in this case move knife down
       writeBlock(gFormat.format(4),pFormat.format(0.2)); //wait 200ms the time for the knife to plunge
 
     }
@@ -255,6 +264,15 @@ function onLinear(_x, _y, _z, feed) {
   var direction = Vector.diff(target,start);
   //compute orientation of the upcoming segment
   var orientation_rad = direction.getXYAngle();
+  //add offset on tool 2
+  var offset = 0
+  if(tool.number==2){
+    offset = toRad(properties.tool2Offset);
+  }
+  orientation_rad += offset;
+  //orientation_rad = angleToMachine(orientation_rad)
+  //orientation_rad = orientation_rad % (2*Math.PI);
+  //compute C orientation
   updateC(orientation_rad);
   var x = xOutput.format(_x);
   var y = yOutput.format(_y);; 
@@ -288,6 +306,29 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
     var end_center = Vector.diff(end,center);
     var end_dir = Vector.cross(end_center,up);
     var end_angle = end_dir.getXYAngle();
+    //add offset on tool 2
+    var offset = 0
+    writeComment(start_angle)
+    writeComment(end_angle)
+    writeComment(c_rad)
+    if(tool.number==2){
+      offset = toRad(properties.tool2Offset);
+    }
+    start_angle += offset;
+    //start_angle = angleToMachine(start_angle);
+    end_angle += offset;
+    //end_angle = angleToMachine(end_angle);
+    if(clockwise) {
+      writeComment('clockwise')
+      if(end_angle -start_angle > c_rad) {
+        end_angle -= 2*Math.PI;
+      }
+    }
+    else {
+      if(end_angle <= c_rad){
+        end_angle += 2*Math.PI;
+      }
+    }
     updateC(start_angle);
     c_rad = end_angle;
     writeBlock(gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), cOutput.format(end_angle), iOutput.format(cx - start.x, 0), jOutput.format(cy - start.y, 0), feedOutput.format(feed));
