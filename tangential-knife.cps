@@ -159,6 +159,7 @@ function onOpen() {
   }
 
   writeBlock(gAbsIncModal.format(90));
+  writeBlock(gFormat.format(64)); //G64 look forward option
 
   if (properties.hasVacuum){
     writeComment('Switch on vacuum table');
@@ -210,7 +211,7 @@ function onSection() {
       break;
     case(3):
       command = 95;
-      break;1
+      break;
     case (4):
       command = 97;
       break;
@@ -292,7 +293,8 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
 
   switch (getCircularPlane()) {
   case PLANE_XY:
-    var OD = getCurrentPosition();  //►vector from origin to departure
+    var start = getCurrentPosition();
+    var OD = start;  //vector from origin to departure
     var OC = new Vector(cx,cy,cz);  //vector from origin to center 
     var Z = new Vector(0,0,clockwise ? 1 : -1);  //vector normal to XY plane
     var CD = Vector.diff(OD,OC); //OD-OC = CO+OD = CD -> radius vector facing ourside

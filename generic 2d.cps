@@ -21,7 +21,7 @@ longDescription = "Generic ISO milling post for 2D.";
 extension = "nc";
 setCodePage("ascii");
 
-capabilities = CAPABILITY_MILLING;
+capabilities = CAPABILITY_JET;
 tolerance = spatial(0.002, MM);
 minimumChordLength = spatial(0.25, MM);
 minimumCircularRadius = spatial(0.01, MM);
@@ -29,7 +29,7 @@ maximumCircularRadius = spatial(1000, MM);
 minimumCircularSweep = toRad(0.01);
 maximumCircularSweep = toRad(180);
 allowHelicalMoves = true;
-allowedCircularPlanes = PLANE_XY;
+allowedCircularPlanes = 1 << PLANE_XY;;
 
 // user-defined properties
 properties = {
