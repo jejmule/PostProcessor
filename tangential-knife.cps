@@ -89,20 +89,21 @@ var offset = 0
  */
  function updateC(target_rad) {
   //check if we should rotate the head
-  var delta_rad = (target_rad-c_rad) % (2*Math.PI)
+  var delta_rad = (target_rad-c_rad) //% (2*Math.PI)
   //writeComment(String.concat('delta ',delta_rad))
   if (Math.abs(delta_rad) > liftAtCorner_rad) { //angle between segments is larger than max_angle : lift the knife, rotate and plunge back in material
     moveUp()
     gMotionModal.reset()
     writeBlock(gMotionModal.format(0), cOutput.format(toDeg(target_rad)+offset));
     moveDown()
+    c_rad = target_rad
   }
-  else if (delta_rad == 0){ //next segment is colinear with current segment : do nothing
+  else if (delta_rad % (2*Math.PI) == 0){ //next segment is colinear with current segment : do nothing
   }
   else {  //angle between segments is smaller than max_angle : rotate knife in material
     writeBlock(gMotionModal.format(1), cOutput.format(toDeg(target_rad)+offset));
+    c_rad = target_rad
   }
-  c_rad += delta_rad
  }
 
  function moveUp() {
@@ -310,6 +311,7 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
     else {
       c_rad += angle
     }
+    writeComment(String.concat(toDeg(start_dir),' ',toDeg(angle),' ',toDeg(c_rad)))
     writeBlock(gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), cOutput.format(toDeg(c_rad)+offset), iOutput.format(cx - start.x, 0), jOutput.format(cy - start.y, 0), feedOutput.format(feed));
     /*
     var start = getCurrentPosition();
